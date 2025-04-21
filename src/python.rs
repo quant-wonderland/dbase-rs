@@ -146,21 +146,24 @@ impl DBFFile {
         let fields = dbf_file.fields();
 
         // Create a map of field names to their types
-        let field_types: HashMap<String, FieldType> = fields
+        let field_types: HashMap<String, (String, FieldType)> = fields
             .iter()
-            .map(|f| (f.name.to_string(), f.field_type))
+            .map(|f| (f.name.to_uppercase(), (f.name.clone(), f.field_type)))
             .collect();
 
         for (key, value) in values.iter() {
             let field_name = key.extract::<String>()?;
-            let field_type = field_types.get(&field_name).copied().ok_or_else(|| {
-                PyValueError::new_err(format!(
+            if let Some((original_field_name, field_type)) =
+                field_types.get(&field_name.to_uppercase())
+            {
+                let field_value = self.convert_py_value_to_field_value(value, Some(*field_type))?;
+                record.insert(original_field_name.clone(), field_value);
+            } else {
+                return Err(PyValueError::new_err(format!(
                     "Field '{}' does not exist in the DBF file",
                     field_name
-                ))
-            })?;
-            let field_value = self.convert_py_value_to_field_value(value, Some(field_type))?;
-            record.insert(field_name, field_value);
+                )));
+            }
         }
 
         if index >= dbf_file.num_records() {
@@ -201,25 +204,29 @@ impl DBFFile {
     ) -> PyResult<Vec<Record>> {
         let mut rust_records = Vec::with_capacity(records.len());
         let first_record = records.get_item(0)?;
-
-        // Create a map of field names to their types
-        let field_types: HashMap<String, FieldType> = fields
-            .iter()
-            .map(|f| (f.name.to_string(), f.field_type))
-            .collect();
-
         match first_record.is_instance_of::<PyDict>() {
             true => {
+                // Create a map of field names to their types
+                let field_types: HashMap<String, (String, FieldType)> = fields
+                    .iter()
+                    .map(|f| (f.name.to_uppercase(), (f.name.clone(), f.field_type)))
+                    .collect();
+
                 for record in records {
                     let py_dict = record.downcast::<PyDict>()?;
                     let mut dbf_record = Record::default();
 
                     for (key, value) in py_dict {
-                        let field_name = key.extract::<String>()?;
-                        let field_type = field_types.get(&field_name).copied();
-                        let field_value =
-                            self.convert_py_value_to_field_value(value, field_type)?;
-                        dbf_record.insert(field_name, field_value);
+                        let dict_key = key.extract::<String>()?;
+                        // Use uppercase to find the original field name and type
+                        if let Some((original_field_name, field_type)) =
+                            field_types.get(&dict_key.to_uppercase())
+                        {
+                            let field_value =
+                                self.convert_py_value_to_field_value(value, Some(*field_type))?;
+                            // Use the original field name from fields
+                            dbf_record.insert(original_field_name.clone(), field_value);
+                        }
                     }
 
                     rust_records.push(dbf_record);
