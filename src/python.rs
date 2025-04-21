@@ -43,7 +43,7 @@ impl DBFFile {
         // Process each field definition
         for (name, type_str, length, decimal) in fields {
             // Convert field name - involves allocation
-            let field_name = FieldName::try_from(name.as_str())
+            let field_name = FieldName::try_from(name.to_uppercase().as_str())
                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
             // Convert length - no allocation
