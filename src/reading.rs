@@ -218,9 +218,15 @@ impl<T: Read + Seek> Reader<T> {
     ///
     /// See [`Self::new`] for more information.
     pub fn new_with_encoding<E: Encoding + 'static>(source: T, encoding: E) -> Result<Self, Error> {
-        let mut reader = Self::new(source)?;
-        reader.set_encoding(encoding);
-        Ok(reader)
+        let file = crate::File::open_with_encoding(source, DynEncoding::new(encoding))?;
+        Ok(Self {
+            source: file.inner,
+            memo_reader: None,
+            header: file.header,
+            fields_info: file.fields_info.inner,
+            encoding: file.encoding,
+            options: ReadingOptions::default(),
+        })
     }
 
     pub fn set_encoding<E: Encoding + 'static>(&mut self, encoding: E) {
@@ -340,30 +346,7 @@ impl Reader<BufReader<File>> {
         let bufreader =
             BufReader::new(File::open(path).map_err(|error| Error::io_error(error, 0))?);
         let mut reader = Reader::new(bufreader)?;
-        let at_least_one_field_is_memo = reader
-            .fields_info
-            .iter()
-            .any(|f_info| f_info.field_type == FieldType::Memo);
-
-        if at_least_one_field_is_memo {
-            let memo_type = reader.header.file_type.supported_memo_type();
-            if let Some(mt) = memo_type {
-                let memo_path = match mt {
-                    MemoFileType::DbaseMemo | MemoFileType::DbaseMemo4 => p.with_extension("dbt"),
-                    MemoFileType::FoxBaseMemo => p.with_extension("fpt"),
-                };
-
-                let memo_file = File::open(memo_path).map_err(|error| Error {
-                    record_num: 0,
-                    field: None,
-                    kind: ErrorKind::ErrorOpeningMemoFile(error),
-                })?;
-
-                let memo_reader = MemoReader::new(mt, BufReader::new(memo_file))
-                    .map_err(|error| Error::io_error(error, 0))?;
-                reader.memo_reader = Some(memo_reader);
-            }
-        }
+        setup_memo_reader(p, &mut reader)?;
         Ok(reader)
     }
 
@@ -372,12 +355,45 @@ impl Reader<BufReader<File>> {
         path: P,
         encoding: E,
     ) -> Result<Self, Error> {
-        let mut reader = Self::from_path(path)?;
-        reader.encoding = DynEncoding::new(encoding);
+        let p = path.as_ref().to_owned();
+        let bufreader =
+            BufReader::new(File::open(path).map_err(|error| Error::io_error(error, 0))?);
+        let mut reader = Reader::new_with_encoding(bufreader, DynEncoding::new(encoding))?;
+        setup_memo_reader(p, &mut reader)?;
         Ok(reader)
     }
 }
 
+fn setup_memo_reader<P: AsRef<Path>>(
+    path: P,
+    reader: &mut Reader<BufReader<File>>,
+) -> Result<(), Error> {
+    if reader
+        .fields_info
+        .iter()
+        .any(|f_info| f_info.field_type == FieldType::Memo)
+    {
+        if let Some(mt) = reader.header.file_type.supported_memo_type() {
+            let memo_path = match mt {
+                MemoFileType::DbaseMemo | MemoFileType::DbaseMemo4 => {
+                    path.as_ref().with_extension("dbt")
+                }
+                MemoFileType::FoxBaseMemo => path.as_ref().with_extension("fpt"),
+            };
+
+            let memo_file = File::open(memo_path).map_err(|error| Error {
+                record_num: 0,
+                field: None,
+                kind: ErrorKind::ErrorOpeningMemoFile(error),
+            })?;
+
+            let memo_reader = MemoReader::new(mt, BufReader::new(memo_file))
+                .map_err(|error| Error::io_error(error, 0))?;
+            reader.memo_reader = Some(memo_reader);
+        }
+    }
+    Ok(())
+}
 /// Simple struct to wrap together the value with the name
 /// of the field it belongs to
 pub struct NamedValue<'a, T> {

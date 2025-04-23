@@ -89,10 +89,12 @@ impl DBFFile {
 
     /// Appends multiple records to the DBF file
     fn append_records(&self, records: &PyList) -> PyResult<()> {
-        let mut dbf_file = match File::open_read_write(&self.path) {
-            Ok(file) => file,
-            Err(e) => return Err(PyValueError::new_err(e.to_string())),
-        };
+        let mut dbf_file = if let Some(encoding) = self.get_encoding() {
+            File::open_read_write_with_encoding(&self.path, encoding)
+        } else {
+            File::open_read_write(&self.path)
+        }
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         if let Some(encoding) = self.get_encoding() {
             dbf_file.set_encoding(encoding);
@@ -114,12 +116,12 @@ impl DBFFile {
     // Returns:
     //     PyObject - A list of records
     fn read_records(&self, py: Python) -> PyResult<PyObject> {
-        let mut reader =
-            Reader::from_path(&self.path).map_err(|e| PyValueError::new_err(e.to_string()))?;
-
-        if let Some(encoding) = self.get_encoding() {
-            reader.set_encoding(encoding);
-        }
+        let mut reader = if let Some(encoding) = self.get_encoding() {
+            Reader::from_path_with_encoding(&self.path, encoding)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?
+        } else {
+            Reader::from_path(&self.path).map_err(|e| PyValueError::new_err(e.to_string()))?
+        };
 
         match reader.read() {
             Ok(records) => self.convert_rust_records_to_py(py, records),
@@ -134,8 +136,12 @@ impl DBFFile {
     // Returns:
     //     PyResult<()> - A result indicating success or failure
     fn update_record(&self, index: usize, values: &PyDict) -> PyResult<()> {
-        let mut dbf_file =
-            File::open_read_write(&self.path).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let mut dbf_file = if let Some(encoding) = self.get_encoding() {
+            File::open_read_write_with_encoding(&self.path, encoding)
+        } else {
+            File::open_read_write(&self.path)
+        }
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         if let Some(encoding) = self.get_encoding() {
             dbf_file.set_encoding(encoding);

@@ -6,14 +6,13 @@ use crate::reading::{ReadingOptions, BACKLINK_SIZE, TERMINATOR_VALUE};
 use crate::writing::{write_header_parts, WritableAsDbaseField};
 use crate::ErrorKind::UnsupportedCodePage;
 use crate::{
-    Error, ErrorKind, FieldConversionError, FieldIOError, FieldInfo, FieldIterator, FieldValue,
-    FieldWriter, ReadableRecord, TableInfo, WritableRecord,
+    Encoding, Error, ErrorKind, FieldConversionError, FieldIOError, FieldInfo, FieldIterator,
+    FieldValue, FieldWriter, ReadableRecord, TableInfo, WritableRecord,
 };
 use byteorder::ReadBytesExt;
 use std::fmt::{Debug, Formatter};
 use std::io::{BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::Path;
-
 // Workaround the absence of File::try_clone with WASM/WASI without penalizing the other platforms
 #[cfg(target_family = "wasm")]
 type SharedFile = std::sync::Arc<std::fs::File>;
@@ -562,6 +561,60 @@ impl<T: Read + Seek> File<T> {
         })
     }
 
+    pub fn open_with_encoding<E: Encoding + 'static>(
+        mut source: T,
+        encoding: E,
+    ) -> Result<Self, Error> {
+        let mut header =
+            Header::read_from(&mut source).map_err(|error| Error::io_error(error, 0))?;
+
+        let offset = if header.file_type.is_visual_fox_pro() {
+            if BACKLINK_SIZE > header.offset_to_first_record {
+                panic!("Invalid file");
+            }
+            header.offset_to_first_record - BACKLINK_SIZE
+        } else {
+            header.offset_to_first_record
+        };
+        let num_fields = (offset as usize - Header::SIZE - size_of::<u8>()) / FieldInfo::SIZE;
+
+        let fields_info = FieldsInfo::read_with_encoding(&mut source, num_fields, &encoding)
+            .map_err(|error| Error {
+                record_num: 0,
+                field: None,
+                kind: error,
+            })?;
+
+        let terminator = source
+            .read_u8()
+            .map_err(|error| Error::io_error(error, 0))?;
+
+        debug_assert_eq!(terminator, TERMINATOR_VALUE);
+
+        source
+            .seek(SeekFrom::Start(u64::from(header.offset_to_first_record)))
+            .map_err(|error| Error::io_error(error, 0))?;
+
+        let record_size: usize = DELETION_FLAG_SIZE + fields_info.size_of_all_fields();
+        let record_data_buffer = Cursor::new(vec![0u8; record_size]);
+        // Some file seems not to include the DELETION_FLAG_SIZE into the record size,
+        // but we rely on it
+        header.size_of_record = record_size as u16;
+        // debug_assert_eq!(record_size - DELETION_FLAG_SIZE, header.size_of_record as usize);
+
+        Ok(Self {
+            inner: source,
+            memo_reader: None,
+            header,
+            fields_info,
+            encoding: DynEncoding::new(encoding),
+            record_data_buffer,
+            field_data_buffer: [0u8; 255],
+            options: ReadingOptions::default(),
+            file_position: header.offset_to_first_record as u64,
+        })
+    }
+
     /// Returns a reference to the record at the given index.
     ///
     /// Returns None if no record exist for the given index
@@ -727,6 +780,17 @@ impl File<BufReadWriteFile> {
         let source = BufReadWriteFile::new(file).unwrap();
         File::open(source)
     }
+    pub fn open_with_options_with_encoding<P: AsRef<Path>, E: Encoding + 'static>(
+        path: P,
+        options: std::fs::OpenOptions,
+        encoding: E,
+    ) -> Result<Self, Error> {
+        let file = options
+            .open(path)
+            .map_err(|error| Error::io_error(error, 0))?;
+        let source = BufReadWriteFile::new(file).unwrap();
+        File::open_with_encoding(source, encoding)
+    }
 
     /// Opens an existing dBase file in read only mode
     pub fn open_read_only<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
@@ -773,6 +837,16 @@ impl File<BufReadWriteFile> {
         options.read(true).write(true).create(false).truncate(false);
 
         File::open_with_options(path, options)
+    }
+
+    pub fn open_read_write_with_encoding<P: AsRef<Path>, E: Encoding + 'static>(
+        path: P,
+        encoding: E,
+    ) -> Result<Self, Error> {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(false).truncate(false);
+
+        File::open_with_options_with_encoding(path, options, encoding)
     }
 
     /// This function will create a file if it does not exist, and will truncate it if it does.
