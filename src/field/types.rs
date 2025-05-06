@@ -259,6 +259,26 @@ impl FieldValue {
             FieldValue::DateTime(_) => FieldType::DateTime,
         }
     }
+
+    fn default() -> Self {
+        FieldValue::Character(None)
+    }
+    pub fn default_for_type(field_type: FieldType) -> Self {
+        match field_type {
+            FieldType::Character => FieldValue::Character(None),
+            FieldType::Numeric => FieldValue::Numeric(None),
+            FieldType::Logical => FieldValue::Logical(None),
+            FieldType::Date => FieldValue::Date(None),
+            FieldType::Float => FieldValue::Float(None),
+            FieldType::Double => FieldValue::Double(0.0),
+            FieldType::Currency => FieldValue::Currency(0.0),
+            FieldType::DateTime => {
+                FieldValue::DateTime(DateTime::new(Date::new(1, 1, 1900), Time::new(0, 0, 0)))
+            }
+            FieldType::Integer => FieldValue::Integer(0),
+            _ => FieldValue::default(),
+        }
+    }
 }
 
 impl Display for FieldValue {

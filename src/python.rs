@@ -221,7 +221,11 @@ impl DBFFile {
                 for record in records {
                     let py_dict = record.downcast::<PyDict>()?;
                     let mut dbf_record = Record::default();
-
+                    for field in fields {
+                        let field_name = field.name.to_string();
+                        dbf_record
+                            .insert(field_name, FieldValue::default_for_type(field.field_type));
+                    }
                     for (key, value) in py_dict {
                         let dict_key = key.extract::<String>()?;
                         // Use uppercase to find the original field name and type
@@ -239,29 +243,21 @@ impl DBFFile {
                 }
             }
             false => {
-                if !first_record.is_instance_of::<PyTuple>() {
-                    return Err(PyValueError::new_err(
-                        "Records must be either list of dicts or list of tuples",
-                    ));
-                }
-
                 for record in records {
                     let py_tuple = record.downcast::<PyTuple>()?;
                     let mut dbf_record = Record::default();
-
-                    if py_tuple.len() != fields.len() {
-                        return Err(PyValueError::new_err(format!(
-                            "Tuple length ({}) does not match number of fields ({})",
-                            py_tuple.len(),
-                            fields.len()
-                        )));
-                    }
-
                     for (i, field) in fields.iter().enumerate() {
-                        let value = py_tuple.get_item(i)?;
-                        let field_value =
-                            self.convert_py_value_to_field_value(value, Some(field.field_type))?;
-                        dbf_record.insert(field.name.to_string(), field_value);
+                        if i < py_tuple.len() {
+                            let value = py_tuple.get_item(i)?;
+                            let field_value = self
+                                .convert_py_value_to_field_value(value, Some(field.field_type))?;
+                            dbf_record.insert(field.name.to_string(), field_value);
+                        } else {
+                            dbf_record.insert(
+                                field.name.to_string(),
+                                FieldValue::default_for_type(field.field_type),
+                            );
+                        }
                     }
 
                     rust_records.push(dbf_record);
