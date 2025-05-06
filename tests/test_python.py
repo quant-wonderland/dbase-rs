@@ -402,6 +402,66 @@ class TestDBFFile(unittest.TestCase):
         records = dbf.read_records()
         self.assertEqual(records[1]["DESC"], "")  # 应该保持为空字符串
 
+    # 测试append数据时，tuple的长度小于fields的长度
+    def test_append_tuple_shorter_than_fields(self):
+        """测试append数据时，tuple的长度小于fields的长度"""
+        dbf_path = os.path.join(self.temp_dir, "tuple_shorter_than_fields_test.dbf")
+        dbf = DBFFile(dbf_path)
+
+        fields = [
+            ("NAME", "C", 50, None),
+            ("AGE", "N", 3, None),
+            ("SALARY", "N", 10, 2),
+            ("REMARK", "C", 100, None),
+        ]
+        dbf.create(fields)
+
+        test_records = [
+            ("John", 30),
+            ("Jane", 25),
+        ]
+        dbf.append_records(test_records)
+        records = dbf.read_records()
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0]["NAME"], "John")
+        self.assertEqual(records[0]["AGE"], 30)
+        self.assertEqual(records[0]["SALARY"], None)
+        self.assertEqual(records[0]["REMARK"], "")
+        self.assertEqual(records[1]["NAME"], "Jane")
+        self.assertEqual(records[1]["AGE"], 25)
+        self.assertEqual(records[1]["SALARY"], None)
+        self.assertEqual(records[1]["REMARK"], "")
+        # 测试插入Dict
+        dbf_path = os.path.join(self.temp_dir, "dict_test.dbf")
+        dbf = DBFFile(dbf_path)
+
+        fields = [
+            ("NAME", "C", 50, None),
+            ("AGE", "N", 3, None),
+            ("SALARY", "N", 10, 2),
+            ("REMARK", "C", 100, None),
+        ]
+        dbf.create(fields)
+
+        test_records = [
+            {"NAME": "John", "AGE": 30},
+        ]
+        dbf.append_records(test_records)
+        records = dbf.read_records()
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["NAME"], "John")
+        self.assertEqual(records[0]["AGE"], 30)
+        self.assertEqual(records[0]["SALARY"], None)
+        self.assertEqual(records[0]["REMARK"], "")
+
+        # 测试update传入部分字段
+        dbf.update_record(1, {"name": "Jane"})
+        records = dbf.read_records()
+        self.assertEqual(records[1]["NAME"], "Jane")
+        self.assertEqual(records[1]["AGE"], None)
+        self.assertEqual(records[1]["SALARY"], None)
+        self.assertEqual(records[1]["REMARK"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

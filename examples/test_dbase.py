@@ -8,11 +8,12 @@ from datetime import datetime, timedelta
 import dbf
 from dbfread import DBF
 
+
 def generate_test_records_dict(count):
     """生成字典格式的测试记录"""
     records = []
     start_date = datetime(1980, 1, 1)
-    
+
     cn_titles = ["工程师", "经理", "主管", "总监", "专员"]
     cn_depts = ["研发部", "市场部", "销售部", "人事部", "财务部"]
     cn_comments = ["优秀", "良好", "一般", "待改进", "需努力"]
@@ -41,11 +42,12 @@ def generate_test_records_dict(count):
         records.append(record)
     return records
 
+
 def generate_test_records(count):
     """生成测试记录 - 包含中文的测试数据"""
     records = []
     start_date = datetime(1980, 1, 1)
-    
+
     # 中文职位列表
     cn_titles = ["工程师", "经理", "主管", "总监", "专员"]
     # 中文部门列表
@@ -59,20 +61,20 @@ def generate_test_records(count):
         birth_str = birth_date.strftime("%Y%m%d")
 
         record = (
-            f"Person_{i:05d}",                    # NAME
-            f"person_{i:05d}@example.com",        # EMAIL
+            f"Person_{i:05d}",  # NAME
+            f"person_{i:05d}@example.com",  # EMAIL
             f"Dept_{random.randint(1, 10):02d}",  # DEPT
-            f"Title_{random.randint(1, 5)}",      # TITLE
-            random.randint(18, 70),               # AGE
+            f"Title_{random.randint(1, 5)}",  # TITLE
+            random.randint(18, 70),  # AGE
             round(random.uniform(3000.00, 50000.00), 2),  # SALARY
             round(random.uniform(1000.00, 10000.00), 2),  # BONUS
-            birth_str,                            # BIRTH
+            birth_str,  # BIRTH
             "T" if random.choice([True, False]) else "F",  # ACTIVE
-            random.randint(1, 5),                 # RATING
-            random.choice(cn_titles),             # CN_TITLE
-            random.choice(cn_depts),              # CN_DEPT
-            random.choice(cn_comments),           # CN_COMMENT
-            f"张{random.randint(100, 999)}",      # CN_NAME
+            random.randint(1, 5),  # RATING
+            random.choice(cn_titles),  # CN_TITLE
+            random.choice(cn_depts),  # CN_DEPT
+            random.choice(cn_comments),  # CN_COMMENT
+            f"张{random.randint(100, 999)}",  # CN_NAME
         )
         records.append(record)
     return records
@@ -101,9 +103,9 @@ def test_dbf_rust():
         ("RATING", "N", 1, 0),  # 评级
         # 添加中文字段定义
         ("CN_TITLE", "C", 20, None),  # 中文职位
-        ("CN_DEPT", "C", 20, None),   # 中文部门
-        ("CN_COMMENT", "C", 20, None),# 中文备注
-        ("CN_NAME", "C", 20, None),   # 中文姓名
+        ("CN_DEPT", "C", 20, None),  # 中文部门
+        ("CN_COMMENT", "C", 20, None),  # 中文备注
+        ("CN_NAME", "C", 20, None),  # 中文姓名
     ]
 
     print("\n=== Rust 实现测试 ===")
@@ -156,16 +158,16 @@ def test_dbf_rust():
 
     # 添加更新测试
     print("\n5. 测试更新记录...")
-    
+
     # 测试单条记录更新
     print("5.1 测试单条记录更新")
     update_start = time.time()
     try:
         # 更新第一条记录
-        dbf_rust.update_record(0, {"SALARY":99999.99,"CN_TITLE":"经理"})
+        dbf_rust.update_record(0, {"SALARY": 99999.99, "CN_TITLE": "经理"})
         single_update_time = time.time() - update_start
         print(f"单条更新完成，耗时: {single_update_time:.3f}秒")
-        
+
         # 验证更新
         updated_record = dbf_rust.read_records()[0]
         print("更新后的记录:", updated_record)
@@ -195,17 +197,19 @@ def test_dbf_python():
         os.remove(test_file)
 
     # 定义字段规范
-    table_def = ("NAME C(50); EMAIL C(50); DEPT C(20); TITLE C(20); "
-                 "AGE N(3,0); SALARY N(10,2); BONUS N(8,2); BIRTH D; "
-                 "ACTIVE C(1); RATING N(1,0); "
-                 "CN_TITLE C(20); CN_DEPT C(20); CN_COMMENT C(20); CN_NAME C(20)")
+    table_def = (
+        "NAME C(50); EMAIL C(50); DEPT C(20); TITLE C(20); "
+        "AGE N(3,0); SALARY N(10,2); BONUS N(8,2); BIRTH D; "
+        "ACTIVE C(1); RATING N(1,0); "
+        "CN_TITLE C(20); CN_DEPT C(20); CN_COMMENT C(20); CN_NAME C(20)"
+    )
 
     print("\n=== Python dbf 实现测试 ===")
     print("1. 测试创建 DBF 文件结构...")
     create_start = time.time()
     try:
         # 创建表结构
-        table = dbf.Table(test_file, table_def,codepage="cp936")
+        table = dbf.Table(test_file, table_def, codepage="cp936")
         table.open(mode=dbf.READ_WRITE)
         create_time = time.time() - create_start
         initial_size = os.path.getsize(test_file)
@@ -267,12 +271,12 @@ def test_dbf_python():
 
     # 添加更新测试
     print("\n5. 测试更新记录...")
-    
+
     # 测试单条记录更新
     print("5.1 测试单条记录更新")
     update_start = time.time()
     try:
-        with dbf.Table(test_file, codepage="cp936")  as t:
+        with dbf.Table(test_file, codepage="cp936") as t:
             with t[0] as record:
                 record["SALARY"] = 99999.99
         single_update_time = time.time() - update_start
@@ -282,7 +286,7 @@ def test_dbf_python():
         print(f"单条记录更新失败: {e}")
         table.close()
         return
-    
+
     try:
         # 使用 dbfread 读取文件
         table_read = DBF(test_file)
@@ -295,13 +299,11 @@ def test_dbf_python():
     except Exception as e:
         print(f"读取记录失败: {e}")
         return
-    
+
     # 性能统计
     final_size = os.path.getsize(test_file)
     print("\n4. 性能统计:")
-    print(
-        f"- 字段数量: {len(table.field_names)}"
-    )  # 仍然使用之前的 table 对象获取字段数量
+    print(f"- 字段数量: {len(table.field_names)}")  # 仍然使用之前的 table 对象获取字段数量
     print(f"- 记录数量: {record_count}")
     print(f"- 最终文件大小: {final_size / 1024 / 1024:.2f}MB")
     print(f"- 平均记录大小: {final_size / record_count:.1f}字节")
