@@ -173,6 +173,20 @@ impl DBFFile {
         }
 
         if index >= dbf_file.num_records() {
+            for field in fields {
+                let field_name = field.name.to_string().to_uppercase();
+                let py_field_names: Vec<String> = values
+                    .keys()
+                    .into_iter()
+                    .map(|key| key.extract::<String>().unwrap().to_uppercase())
+                    .collect();
+                if !py_field_names.contains(&field_name) {
+                    record.insert(
+                        field_name.to_uppercase(),
+                        FieldValue::default_for_type(field.field_type),
+                    );
+                }
+            }
             // Append new record
             dbf_file
                 .append_record(&record)
